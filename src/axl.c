@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -308,6 +309,92 @@ int AXL_Finalize (void)
 
     return rc;
 }
+
+
+/** Set a AXL config parameters */
+kvtree* AXL_Config(const int id, const kvtree* config)
+{
+  kvtree* retval = (kvtree*)(config);
+
+  static const char* known_options[] = {
+    AXL_KEY_CONFIG_FILE_BUF_SIZE,
+    AXL_KEY_CONFIG_DEBUG,
+    AXL_KEY_CONFIG_MKDIR,
+    AXL_KEY_CONFIG_COPY_METADATA,
+    NULL
+  };
+
+  /* TODO: implement getting configuration options back */
+  if (config == NULL) {
+    return NULL;
+  }
+
+  /* TODO: implement transfer specific options */
+  if (id != -1) {
+    return NULL;
+  }
+
+  if (config != NULL) {
+    /* read out all options we know about */
+    /* TODO: this could be turned into a list of structs */
+    unsigned long ul;
+    if (kvtree_util_get_bytecount(config,
+      AXL_KEY_CONFIG_FILE_BUF_SIZE, &ul) == KVTREE_SUCCESS)
+    {
+      axl_file_buf_size = (size_t) ul;
+      if (axl_file_buf_size != ul) {
+        char* value;
+        kvtree_util_get_str(config, AXL_KEY_CONFIG_FILE_BUF_SIZE, &value);
+        AXL_ERR("Value '%s' passed for %s exceeds int range",
+          value, AXL_KEY_CONFIG_FILE_BUF_SIZE
+        );
+        retval = NULL;
+      }
+    }
+
+    kvtree_util_get_int(config, AXL_KEY_CONFIG_DEBUG, &axl_debug);
+
+    kvtree_util_get_int(config, AXL_KEY_CONFIG_MKDIR, &axl_make_directories);
+
+    kvtree_util_get_int(config,
+      AXL_KEY_CONFIG_COPY_METADATA, &axl_copy_metadata);
+
+    /* report all unknown options (typos?) */
+    const kvtree_elem* elem;
+    for (elem = kvtree_elem_first(config);
+         elem != NULL;
+         elem = kvtree_elem_next(elem))
+    {
+      /* must be only one level deep, ie plain kev = value */
+      const kvtree* elem_hash = kvtree_elem_hash(elem);
+      assert(kvtree_size(elem_hash) == 1);
+
+      const kvtree* kvtree_first_elem_hash =
+        kvtree_elem_hash(kvtree_elem_first(elem_hash));
+      assert(kvtree_size(kvtree_first_elem_hash) == 0);
+
+      /* check against known options */
+      const char** opt;
+      int found = 0;
+      for (opt = known_options; *opt != NULL; opt++) {
+        if (strcmp(*opt, kvtree_elem_key(elem)) == 0) {
+          found = 1;
+          break;
+        }
+      }
+      if (! found) {
+        AXL_ERR("Unknown configuration parameter '%s' with value '%s'",
+          kvtree_elem_key(elem),
+          kvtree_elem_key(kvtree_elem_first(kvtree_elem_hash(elem)))
+        );
+        retval = NULL;
+      }
+    }
+  }
+
+  return retval;
+}
+
 
 /* Create a transfer handle (used for 0+ files)
  * Type specifies a particular method to use
