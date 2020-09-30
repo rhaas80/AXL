@@ -317,10 +317,7 @@ kvtree* AXL_Config(const kvtree* config)
   kvtree* retval = (kvtree*)(config);
 
   static const char* known_options[] = {
-    AXL_KEY_CONFIG_FLUSH_ASYNC_BW,
-    AXL_KEY_CONFIG_FLUSH_ASYNC_PERCENT,
     AXL_KEY_CONFIG_FILE_BUF_SIZE,
-    AXL_KEY_CONFIG_CRC_ON_FLUSH,
     AXL_KEY_CONFIG_DEBUG,
     AXL_KEY_CONFIG_MKDIR,
     AXL_KEY_CONFIG_COPY_METADATA,
@@ -333,35 +330,13 @@ kvtree* AXL_Config(const kvtree* config)
   }
 
   if (config != NULL) {
-    /* dummy variables for options not actually supported (anymore) */
-    double axl_flush_async_bw = 0.0;
-    double axl_flush_async_percent = 0.0;
-    int axl_crc_on_flush = 1;
-
     /* read out all options we know about */
     /* TODO: this could be turned into a list of structs */
     unsigned long ul;
     if (kvtree_util_get_bytecount(config,
-      AXL_KEY_CONFIG_FLUSH_ASYNC_BW, &ul) == KVTREE_SUCCESS)
-    {
-      axl_flush_async_bw = (double) ul;
-      if (axl_flush_async_bw != ul) {
-        char* value;
-        kvtree_util_get_str(config, AXL_KEY_CONFIG_FLUSH_ASYNC_BW, &value);
-        AXL_ERR("Value '%s' passed for %s exceeds int range",
-          value, AXL_KEY_CONFIG_FLUSH_ASYNC_BW
-        );
-        retval = NULL;
-      }
-    }
-
-    kvtree_util_get_double(config,
-      AXL_KEY_CONFIG_FLUSH_ASYNC_PERCENT, &axl_flush_async_percent);
-
-    if (kvtree_util_get_bytecount(config,
       AXL_KEY_CONFIG_FILE_BUF_SIZE, &ul) == KVTREE_SUCCESS)
     {
-      axl_file_buf_size = (int) ul;
+      axl_file_buf_size = (size_t) ul;
       if (axl_file_buf_size != ul) {
         char* value;
         kvtree_util_get_str(config, AXL_KEY_CONFIG_FILE_BUF_SIZE, &value);
@@ -371,9 +346,6 @@ kvtree* AXL_Config(const kvtree* config)
         retval = NULL;
       }
     }
-
-    kvtree_util_get_int(config,
-      AXL_KEY_CONFIG_CRC_ON_FLUSH, &axl_crc_on_flush);
 
     kvtree_util_get_int(config, AXL_KEY_CONFIG_DEBUG, &axl_debug);
 
