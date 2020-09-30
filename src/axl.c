@@ -316,7 +316,6 @@ kvtree* AXL_Config(const kvtree* config)
 {
   kvtree* retval = (kvtree*)(config);
 
-  static int configured = 0;
   static const char* known_options[] = {
     AXL_KEY_CONFIG_FLUSH_ASYNC_BW,
     AXL_KEY_CONFIG_FLUSH_ASYNC_PERCENT,
@@ -333,95 +332,87 @@ kvtree* AXL_Config(const kvtree* config)
     return NULL;
   }
 
-  if (! configured) {
-    if (config != NULL) {
-      /* dummy variables for options not actually supported (anymore) */
-      double axl_flush_async_bw = 0.0;
-      double axl_flush_async_percent = 0.0;
-      int axl_crc_on_flush = 1;
+  if (config != NULL) {
+    /* dummy variables for options not actually supported (anymore) */
+    double axl_flush_async_bw = 0.0;
+    double axl_flush_async_percent = 0.0;
+    int axl_crc_on_flush = 1;
 
-      /* read out all options we know about */
-      /* TODO: this could be turned into a list of structs */
-      unsigned long ul;
-      if (kvtree_util_get_bytecount(config,
-        AXL_KEY_CONFIG_FLUSH_ASYNC_BW, &ul) == KVTREE_SUCCESS)
-      {
-        axl_flush_async_bw = (double) ul;
-        if (axl_flush_async_bw != ul) {
-          char* value;
-          kvtree_util_get_str(config, AXL_KEY_CONFIG_FLUSH_ASYNC_BW, &value);
-          AXL_ERR("Value '%s' passed for %s exceeds int range",
-            value, AXL_KEY_CONFIG_FLUSH_ASYNC_BW
-          );
-          retval = NULL;
-        }
-      }
-
-      kvtree_util_get_double(config,
-        AXL_KEY_CONFIG_FLUSH_ASYNC_PERCENT, &axl_flush_async_percent);
-
-      if (kvtree_util_get_bytecount(config,
-        AXL_KEY_CONFIG_FILE_BUF_SIZE, &ul) == KVTREE_SUCCESS)
-      {
-        axl_file_buf_size = (int) ul;
-        if (axl_file_buf_size != ul) {
-          char* value;
-          kvtree_util_get_str(config, AXL_KEY_CONFIG_FILE_BUF_SIZE, &value);
-          AXL_ERR("Value '%s' passed for %s exceeds int range",
-            value, AXL_KEY_CONFIG_FILE_BUF_SIZE
-          );
-          retval = NULL;
-        }
-      }
-
-      kvtree_util_get_int(config,
-        AXL_KEY_CONFIG_CRC_ON_FLUSH, &axl_crc_on_flush);
-
-      kvtree_util_get_int(config, AXL_KEY_CONFIG_DEBUG, &axl_debug);
-
-      kvtree_util_get_int(config, AXL_KEY_CONFIG_MKDIR, &axl_make_directories);
-
-      kvtree_util_get_int(config,
-        AXL_KEY_CONFIG_COPY_METADATA, &axl_copy_metadata);
-
-      /* report all unknown options (typos?) */
-      const kvtree_elem* elem;
-      for (elem = kvtree_elem_first(config);
-           elem != NULL;
-           elem = kvtree_elem_next(elem))
-      {
-        /* must be only one level deep, ie plain kev = value */
-        const kvtree* elem_hash = kvtree_elem_hash(elem);
-        assert(kvtree_size(elem_hash) == 1);
-
-        const kvtree* kvtree_first_elem_hash =
-          kvtree_elem_hash(kvtree_elem_first(elem_hash));
-        assert(kvtree_size(kvtree_first_elem_hash) == 0);
-
-        /* check against known options */
-        const char** opt;
-        int found = 0;
-        for (opt = known_options; *opt != NULL; opt++) {
-          if (strcmp(*opt, kvtree_elem_key(elem)) == 0) {
-            found = 1;
-            break;
-          }
-        }
-        if (! found) {
-          AXL_ERR("Unknown configuration parameter '%s' with value '%s'",
-            kvtree_elem_key(elem),
-            kvtree_elem_key(kvtree_elem_first(kvtree_elem_hash(elem)))
-          );
-          retval = NULL;
-        }
+    /* read out all options we know about */
+    /* TODO: this could be turned into a list of structs */
+    unsigned long ul;
+    if (kvtree_util_get_bytecount(config,
+      AXL_KEY_CONFIG_FLUSH_ASYNC_BW, &ul) == KVTREE_SUCCESS)
+    {
+      axl_flush_async_bw = (double) ul;
+      if (axl_flush_async_bw != ul) {
+        char* value;
+        kvtree_util_get_str(config, AXL_KEY_CONFIG_FLUSH_ASYNC_BW, &value);
+        AXL_ERR("Value '%s' passed for %s exceeds int range",
+          value, AXL_KEY_CONFIG_FLUSH_ASYNC_BW
+        );
+        retval = NULL;
       }
     }
 
-    /* only accept configuration options once */
-    configured = 1;
-  } else {
-    AXL_ERR("Already configured");
-    retval = NULL;
+    kvtree_util_get_double(config,
+      AXL_KEY_CONFIG_FLUSH_ASYNC_PERCENT, &axl_flush_async_percent);
+
+    if (kvtree_util_get_bytecount(config,
+      AXL_KEY_CONFIG_FILE_BUF_SIZE, &ul) == KVTREE_SUCCESS)
+    {
+      axl_file_buf_size = (int) ul;
+      if (axl_file_buf_size != ul) {
+        char* value;
+        kvtree_util_get_str(config, AXL_KEY_CONFIG_FILE_BUF_SIZE, &value);
+        AXL_ERR("Value '%s' passed for %s exceeds int range",
+          value, AXL_KEY_CONFIG_FILE_BUF_SIZE
+        );
+        retval = NULL;
+      }
+    }
+
+    kvtree_util_get_int(config,
+      AXL_KEY_CONFIG_CRC_ON_FLUSH, &axl_crc_on_flush);
+
+    kvtree_util_get_int(config, AXL_KEY_CONFIG_DEBUG, &axl_debug);
+
+    kvtree_util_get_int(config, AXL_KEY_CONFIG_MKDIR, &axl_make_directories);
+
+    kvtree_util_get_int(config,
+      AXL_KEY_CONFIG_COPY_METADATA, &axl_copy_metadata);
+
+    /* report all unknown options (typos?) */
+    const kvtree_elem* elem;
+    for (elem = kvtree_elem_first(config);
+         elem != NULL;
+         elem = kvtree_elem_next(elem))
+    {
+      /* must be only one level deep, ie plain kev = value */
+      const kvtree* elem_hash = kvtree_elem_hash(elem);
+      assert(kvtree_size(elem_hash) == 1);
+
+      const kvtree* kvtree_first_elem_hash =
+        kvtree_elem_hash(kvtree_elem_first(elem_hash));
+      assert(kvtree_size(kvtree_first_elem_hash) == 0);
+
+      /* check against known options */
+      const char** opt;
+      int found = 0;
+      for (opt = known_options; *opt != NULL; opt++) {
+        if (strcmp(*opt, kvtree_elem_key(elem)) == 0) {
+          found = 1;
+          break;
+        }
+      }
+      if (! found) {
+        AXL_ERR("Unknown configuration parameter '%s' with value '%s'",
+          kvtree_elem_key(elem),
+          kvtree_elem_key(kvtree_elem_first(kvtree_elem_hash(elem)))
+        );
+        retval = NULL;
+      }
+    }
   }
 
   return retval;
