@@ -9,7 +9,6 @@
 int
 main(void) {
     int rc;
-    char *state_file = NULL;
     kvtree* axl_config_values = kvtree_new();
 
     size_t old_axl_file_buf_size = axl_file_buf_size;
@@ -17,7 +16,7 @@ main(void) {
     int old_axl_make_directories = axl_make_directories;
     int old_axl_copy_metadata = axl_copy_metadata;
 
-    rc = AXL_Init(state_file);
+    rc = AXL_Init();
     if (rc != AXL_SUCCESS) {
         printf("AXL_Init() failed (error %d)\n", rc);
         return rc;
