@@ -55,12 +55,6 @@ main(void) {
         return EXIT_FAILURE;
     }
 
-    printf("Configuring AXL a second time (this should fail)...\n");
-    if (AXL_Config(axl_config_values) != NULL) {
-        printf("AXL_Config() succeeded unexpectedly\n");
-        return EXIT_FAILURE;
-    }
-
     if (axl_file_buf_size != old_axl_file_buf_size + 1) {
         printf("AXL_Config() failed to set %s: %lu != %lu\n",
                AXL_KEY_CONFIG_FILE_BUF_SIZE, (long unsigned)axl_file_buf_size,
