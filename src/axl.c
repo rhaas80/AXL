@@ -323,17 +323,32 @@ static kvtree* AXL_Config_Set(const int id, const kvtree* config)
     NULL
   };
 
-  /* TODO: implement getting configuration options back */
   if (config == NULL) {
     return NULL;
   }
 
-  /* TODO: implement transfer specific options */
-  if (id != -1) {
-    return NULL;
-  }
+  if (id >= 0 && id < axl_kvtrees_count) {
+    /* this should be protected by a mutex_lock to prevent issues with
+     * realloc() moving memory when growing axl_kvtrees, but no one else
+     * does ... */
+    kvtree* file_list = axl_kvtrees[id];
 
-  if (config != NULL) {
+    const char** opt;
+    for (opt = known_options; *opt != NULL; opt++)
+    {
+      const char* val = kvtree_get_val(config, *opt);
+      if (val != NULL) {
+        /* this is (annoyingly) non-atomic so could leave file_list in
+         * a strange state if malloc() fails at the wrong time.
+         * Using kvtree_merge with a temporary tree does not seem to be any
+         * better though */
+        if (kvtree_set_kv(file_list, *opt, val) != KVTREE_SUCCESS) {
+          retval = NULL;
+          break;
+        }
+      }
+    }
+  } else if (id == -1) {
     /* read out all options we know about */
     /* TODO: this could be turned into a list of structs */
     unsigned long ul;
@@ -357,37 +372,37 @@ static kvtree* AXL_Config_Set(const int id, const kvtree* config)
 
     kvtree_util_get_int(config,
       AXL_KEY_CONFIG_COPY_METADATA, &axl_copy_metadata);
+  }
 
-    /* report all unknown options (typos?) */
-    const kvtree_elem* elem;
-    for (elem = kvtree_elem_first(config);
-         elem != NULL;
-         elem = kvtree_elem_next(elem))
-    {
-      /* must be only one level deep, ie plain kev = value */
-      const kvtree* elem_hash = kvtree_elem_hash(elem);
-      assert(kvtree_size(elem_hash) == 1);
+  /* report all unknown options (typos?) */
+  const kvtree_elem* elem;
+  for (elem = kvtree_elem_first(config);
+       elem != NULL;
+       elem = kvtree_elem_next(elem))
+  {
+    /* must be only one level deep, ie plain kev = value */
+    const kvtree* elem_hash = kvtree_elem_hash(elem);
+    assert(kvtree_size(elem_hash) == 1);
 
-      const kvtree* kvtree_first_elem_hash =
-        kvtree_elem_hash(kvtree_elem_first(elem_hash));
-      assert(kvtree_size(kvtree_first_elem_hash) == 0);
+    const kvtree* kvtree_first_elem_hash =
+      kvtree_elem_hash(kvtree_elem_first(elem_hash));
+    assert(kvtree_size(kvtree_first_elem_hash) == 0);
 
-      /* check against known options */
-      const char** opt;
-      int found = 0;
-      for (opt = known_options; *opt != NULL; opt++) {
-        if (strcmp(*opt, kvtree_elem_key(elem)) == 0) {
-          found = 1;
-          break;
-        }
+    /* check against known options */
+    const char** opt;
+    int found = 0;
+    for (opt = known_options; *opt != NULL; opt++) {
+      if (strcmp(*opt, kvtree_elem_key(elem)) == 0) {
+        found = 1;
+        break;
       }
-      if (! found) {
-        AXL_ERR("Unknown configuration parameter '%s' with value '%s'",
-          kvtree_elem_key(elem),
-          kvtree_elem_key(kvtree_elem_first(kvtree_elem_hash(elem)))
-        );
-        retval = NULL;
-      }
+    }
+    if (! found) {
+      AXL_ERR("Unknown configuration parameter '%s' with value '%s'",
+        kvtree_elem_key(elem),
+        kvtree_elem_key(kvtree_elem_first(kvtree_elem_hash(elem)))
+      );
+      retval = NULL;
     }
   }
 
@@ -395,11 +410,25 @@ static kvtree* AXL_Config_Set(const int id, const kvtree* config)
 }
 
 /** Actual function to get config parameters */
-static kvtree* AXL_Config_Get(void)
+static kvtree* AXL_Config_Get(const int id)
 {
-    kvtree* config = kvtree_new();
+    kvtree* config = NULL;
 
-    if(config != NULL) {
+    if (id >= 0 && id < axl_kvtrees_count) {
+        /* this should be protected by a mutex_lock to prevent issues with
+         * realloc() moving memory when growing axl_kvtrees, but no one else
+         * does ... */
+        kvtree* file_list = axl_kvtrees[id];
+
+        /* TODO: this returns the full kvtree. Maybe instead have a sub-tree
+         * CONFIG or at least extract only the known configuration options? */
+        config = kvtree_new();
+        if (kvtree_merge(config, file_list) != KVTREE_SUCCESS) {
+            kvtree_delete(&config);
+        }
+    } else if (id == -1) {
+        config = kvtree_new();
+
         int success = 1; /* all values could be set? */
 
         success &= kvtree_util_set_bytecount(config,
@@ -427,7 +456,7 @@ kvtree* AXL_Config(const int id, const kvtree* config)
     if (config != NULL) {
         return AXL_Config_Set(id, config);
     } else {
-        return AXL_Config_Get();
+        return AXL_Config_Get(id);
     }
 }
 
