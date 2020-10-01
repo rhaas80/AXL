@@ -50,7 +50,7 @@ main(void) {
     }
 
     printf("Configuring AXL...\n");
-    if (AXL_Config(axl_config_values) == NULL) {
+    if (AXL_Config(-1, axl_config_values) == NULL) {
         printf("AXL_Config() failed\n");
         return EXIT_FAILURE;
     }
