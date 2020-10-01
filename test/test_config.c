@@ -36,6 +36,32 @@ main(void) {
         printf("kvtree_util_set_int failed (error %d)\n", rc);
         return rc;
     }
+
+    printf("Configuring AXL (first set of options)...\n");
+    if (AXL_Config(-1, axl_config_values) == NULL) {
+        printf("AXL_Config() failed\n");
+        return EXIT_FAILURE;
+    }
+
+    /* check that options were set */
+
+    if (axl_file_buf_size != old_axl_file_buf_size + 1) {
+        printf("AXL_Config() failed to set %s: %lu != %lu\n",
+               AXL_KEY_CONFIG_FILE_BUF_SIZE, (long unsigned)axl_file_buf_size,
+               (long unsigned)(old_axl_file_buf_size + 1));
+        return EXIT_FAILURE;
+    }
+
+    if (axl_debug != !old_axl_debug) {
+        printf("AXL_Config() failed to set %s: %d != %d\n",
+               AXL_KEY_CONFIG_DEBUG, axl_debug, !old_axl_debug);
+        return EXIT_FAILURE;
+    }
+
+    /* set remainder of options */
+    kvtree_delete(&axl_config_values);
+    axl_config_values = kvtree_new();
+
     rc = kvtree_util_set_int(axl_config_values, AXL_KEY_CONFIG_MKDIR,
                              !old_axl_make_directories);
     if (rc != KVTREE_SUCCESS) {
@@ -49,11 +75,13 @@ main(void) {
         return rc;
     }
 
-    printf("Configuring AXL...\n");
+    printf("Configuring AXL (second set of options)...\n");
     if (AXL_Config(-1, axl_config_values) == NULL) {
         printf("AXL_Config() failed\n");
         return EXIT_FAILURE;
     }
+
+    /* check all options once more */
 
     if (axl_file_buf_size != old_axl_file_buf_size + 1) {
         printf("AXL_Config() failed to set %s: %lu != %lu\n",
