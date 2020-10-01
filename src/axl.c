@@ -312,7 +312,7 @@ int AXL_Finalize (void)
 
 
 /** Set a AXL config parameters */
-kvtree* AXL_Config(const kvtree* config)
+kvtree* AXL_Config(const int id, const kvtree* config)
 {
   kvtree* retval = (kvtree*)(config);
 
@@ -326,6 +326,11 @@ kvtree* AXL_Config(const kvtree* config)
 
   /* TODO: implement getting configuration options back */
   if (config == NULL) {
+    return NULL;
+  }
+
+  /* TODO: implement transfer specific options */
+  if (id != -1) {
     return NULL;
   }
 
