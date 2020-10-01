@@ -849,8 +849,11 @@ int __AXL_Dispatch (int id, int resume)
 
     kvtree_util_set_int(file_list, AXL_KEY_STATE, (int)AXL_XFER_STATE_DISPATCHED);
 
+    int make_directories = axl_make_directories;
+    kvtree_util_get_int(file_list, AXL_KEY_CONFIG_MKDIR, &make_directories);
+
     /* create destination directories for each file */
-    if (axl_make_directories) {
+    if (make_directories) {
         while ((elem = axl_get_next_path(id, elem, NULL, &dest))) {
             char* dest_path = strdup(dest);
             char* dest_dir = dirname(dest_path);

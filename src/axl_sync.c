@@ -34,10 +34,22 @@ int __axl_sync_start (int id, int resume)
             continue;
         }
 
+        /* TODO: check bytecount conversion success, do not use global
+         * axl_kvtrees to get file_list */
+        size_t file_buf_size = axl_file_buf_size;
+        unsigned long ul = file_buf_size;
+        kvtree_util_get_bytecount(file_list, AXL_KEY_CONFIG_FILE_BUF_SIZE, &ul);
+        file_buf_size = ul;
+
+        int copy_metadata = axl_copy_metadata;
+        kvtree_util_get_int(file_list, AXL_KEY_CONFIG_COPY_METADATA,
+                            &copy_metadata);
+
         /* Copy the file */
         char* destination;
         kvtree_util_get_str(elem_hash, AXL_KEY_FILE_DEST, &destination);
-        int tmp_rc = axl_file_copy(source, destination, axl_file_buf_size, resume);
+        int tmp_rc = axl_file_copy(source, destination, file_buf_size,
+                                   copy_metadata, resume);
         if (tmp_rc == AXL_SUCCESS) {
             kvtree_util_set_int(elem_hash, AXL_KEY_FILE_STATUS, AXL_STATUS_DEST);
         } else {

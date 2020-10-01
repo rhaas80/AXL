@@ -531,6 +531,7 @@ int axl_file_copy(
     const char* src_file,
     const char* dst_file,
     unsigned long buf_size,
+    int copy_metadata,
     int resume)
 {
     /* check that we got something for a source file */
@@ -666,7 +667,7 @@ int axl_file_copy(
     if (rc == AXL_SUCCESS) {
         /* succeeded in copying the file, now copy uid/gid,
          * permissions, and timestamps */
-        if (axl_copy_metadata) {
+        if (copy_metadata) {
             kvtree* meta = kvtree_new();
             axl_meta_encode(src_file, meta);
             axl_meta_apply(dst_file, meta);

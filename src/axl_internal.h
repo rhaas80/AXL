@@ -116,6 +116,7 @@ int axl_file_copy(
     const char* src_file,
     const char* dst_file,
     unsigned long buf_size,
+    int copy_metadata,
     int resume
 );
 
