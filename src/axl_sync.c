@@ -1,6 +1,8 @@
 #include "axl_internal.h"
 #include "kvtree_util.h"
 
+#include <assert.h>
+
 /* synchonous transfer of files */
 int __axl_sync_start (int id, int resume)
 {
@@ -34,16 +36,20 @@ int __axl_sync_start (int id, int resume)
             continue;
         }
 
+        int success;
         /* TODO: check bytecount conversion success, do not use global
          * axl_kvtrees to get file_list */
-        size_t file_buf_size = axl_file_buf_size;
-        unsigned long ul = file_buf_size;
-        kvtree_util_get_bytecount(file_list, AXL_KEY_CONFIG_FILE_BUF_SIZE, &ul);
+        size_t file_buf_size;
+        unsigned long ul;
+        success = kvtree_util_get_bytecount(file_list,
+                                            AXL_KEY_CONFIG_FILE_BUF_SIZE, &ul);
+        assert(success == KVTREE_SUCCESS);
         file_buf_size = ul;
 
-        int copy_metadata = axl_copy_metadata;
-        kvtree_util_get_int(file_list, AXL_KEY_CONFIG_COPY_METADATA,
-                            &copy_metadata);
+        int copy_metadata;
+        success = kvtree_util_get_int(file_list, AXL_KEY_CONFIG_COPY_METADATA,
+                                      &copy_metadata);
+        assert(success == KVTREE_SUCCESS);
 
         /* Copy the file */
         char* destination;

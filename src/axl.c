@@ -524,6 +524,21 @@ int __AXL_Create(axl_xfer_t xtype, const char* name, const char* state_file)
         kvtree_util_set_str(file_list, AXL_KEY_UNAME, name);
         kvtree_util_set_int(file_list, AXL_KEY_STATUS, AXL_STATUS_SOURCE);
         kvtree_util_set_int(file_list, AXL_KEY_STATE, (int)AXL_XFER_STATE_CREATED);
+
+        /* options */
+        /* TODO: handle return code of kvtree_util_set_XXX */
+        /* TODO: handle differnces between size_t and unsigned long */
+        kvtree_util_set_bytecount(file_list,
+                                  AXL_KEY_CONFIG_FILE_BUF_SIZE,
+                                  (unsigned long)axl_file_buf_size);
+        /* a per transfer debug value is not currently supported
+        success &= kvtree_util_set_int(file_list, AXL_KEY_CONFIG_DEBUG, axl_debug)
+                     == KVTREE_SUCCESS;
+        */
+        kvtree_util_set_int(file_list, AXL_KEY_CONFIG_MKDIR,
+                            axl_make_directories);
+        kvtree_util_set_int(file_list, AXL_KEY_CONFIG_COPY_METADATA,
+                            axl_copy_metadata);
     }
 
     /* create a structure based on transfer type */
@@ -849,8 +864,10 @@ int __AXL_Dispatch (int id, int resume)
 
     kvtree_util_set_int(file_list, AXL_KEY_STATE, (int)AXL_XFER_STATE_DISPATCHED);
 
-    int make_directories = axl_make_directories;
-    kvtree_util_get_int(file_list, AXL_KEY_CONFIG_MKDIR, &make_directories);
+    int make_directories;
+    int success = kvtree_util_get_int(file_list, AXL_KEY_CONFIG_MKDIR,
+                                      &make_directories);
+    assert(success == KVTREE_SUCCESS);
 
     /* create destination directories for each file */
     if (make_directories) {
