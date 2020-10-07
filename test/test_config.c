@@ -40,7 +40,7 @@ main(void) {
     }
 
     printf("Configuring AXL (first set of options)...\n");
-    if (AXL_Config(-1, axl_config_values) == NULL) {
+    if (AXL_Config(axl_config_values) == NULL) {
         printf("AXL_Config() failed\n");
         return EXIT_FAILURE;
     }
@@ -78,7 +78,7 @@ main(void) {
     }
 
     printf("Configuring AXL (second set of options)...\n");
-    if (AXL_Config(-1, axl_config_values) == NULL) {
+    if (AXL_Config(axl_config_values) == NULL) {
         printf("AXL_Config() failed\n");
         return EXIT_FAILURE;
     }
@@ -125,7 +125,7 @@ main(void) {
     size_t new_axl_file_buf_size;
     int new_axl_debug, new_axl_make_directories, new_axl_copy_metadata;
 
-    kvtree *axl_configured_values = AXL_Config(-1, NULL);
+    kvtree *axl_configured_values = AXL_Config(NULL);
     if (axl_configured_values == NULL) {
         printf("AXL_Config() failed to get config\n");
         return EXIT_FAILURE;
