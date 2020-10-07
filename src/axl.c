@@ -311,8 +311,10 @@ int AXL_Finalize (void)
 }
 
 /** Actual function to set config parameters */
-static kvtree* AXL_Config_Set(const int id, const kvtree* config)
+static kvtree* AXL_Config_Set(const kvtree* config)
 {
+  assert(config != NULL);
+
   kvtree* retval = (kvtree*)(config);
 
   static const char* known_options[] = {
@@ -323,55 +325,106 @@ static kvtree* AXL_Config_Set(const int id, const kvtree* config)
     NULL
   };
 
-  if (config == NULL) {
-    return NULL;
+  /* global options */
+  /* TODO: this could be turned into a list of structs */
+  unsigned long ul;
+  if (kvtree_util_get_bytecount(config,
+    AXL_KEY_CONFIG_FILE_BUF_SIZE, &ul) == KVTREE_SUCCESS)
+  {
+    axl_file_buf_size = (size_t) ul;
+    if (axl_file_buf_size != ul) {
+      char* value;
+      kvtree_util_get_str(config, AXL_KEY_CONFIG_FILE_BUF_SIZE, &value);
+      AXL_ERR("Value '%s' passed for %s exceeds int range",
+        value, AXL_KEY_CONFIG_FILE_BUF_SIZE
+      );
+      retval = NULL;
+    }
   }
 
-  if (id >= 0 && id < axl_kvtrees_count) {
-    /* this should be protected by a mutex_lock to prevent issues with
-     * realloc() moving memory when growing axl_kvtrees, but no one else
-     * does ... */
-    kvtree* file_list = axl_kvtrees[id];
+  kvtree_util_get_int(config, AXL_KEY_CONFIG_DEBUG, &axl_debug);
 
-    const char** opt;
-    for (opt = known_options; *opt != NULL; opt++)
-    {
-      const char* val = kvtree_get_val(config, *opt);
-      if (val != NULL) {
-        /* this is (annoyingly) non-atomic so could leave file_list in
-         * a strange state if malloc() fails at the wrong time.
-         * Using kvtree_merge with a temporary tree does not seem to be any
-         * better though */
-        if (kvtree_set_kv(file_list, *opt, val) != KVTREE_SUCCESS) {
-          retval = NULL;
-          break;
-        }
+  kvtree_util_get_int(config, AXL_KEY_CONFIG_MKDIR, &axl_make_directories);
+
+  kvtree_util_get_int(config,
+    AXL_KEY_CONFIG_COPY_METADATA, &axl_copy_metadata);
+
+  /* check for local options inside an "id" subkey */
+  kvtree* ids = kvtree_get(config, "id");
+  if (ids != NULL) {
+      const kvtree_elem* elem;
+      for (elem = kvtree_elem_first(ids); elem != NULL && retval != NULL;
+           elem = kvtree_elem_next(elem))
+      {
+          const char* key = kvtree_elem_key(elem);
+          char* endptr;
+          long id = strtol(key, &endptr, 10);
+          if ((*key == '\0' || *endptr != '\0') ||
+              (id < 0 || id >= axl_kvtrees_count)) {
+              retval = NULL;
+              break;
+          }
+          kvtree* local_config = kvtree_elem_hash(elem);
+          if (local_config == NULL) {
+              retval = NULL;
+              break;
+          }
+
+          /* this should be protected by a mutex_lock to prevent issues with
+           * realloc() moving memory when growing axl_kvtrees, but no one else
+           * does ... */
+          kvtree* file_list = axl_kvtrees[id];
+
+          const char** opt;
+          for (opt = known_options; *opt != NULL; opt++) {
+              const char* val = kvtree_get_val(local_config, *opt);
+              if (val != NULL) {
+                  /* this is (annoyingly) non-atomic so could leave file_list in
+                   * a strange state if malloc() fails at the wrong time.
+                   * Using kvtree_merge with a temporary tree does not seem to be any
+                   * better though */
+                  if (kvtree_set_kv(file_list, *opt, val) != KVTREE_SUCCESS) {
+                      retval = NULL;
+                      break;
+                  }
+              }
+          }
+
+          /* report all unknown options (typos?) */
+          /* TODO: move into a function, is used twice (well almost, differs in
+           * whether "id" is acceptable */
+          const kvtree_elem* local_elem;
+          for (local_elem = kvtree_elem_first(local_config);
+               local_elem != NULL;
+               local_elem = kvtree_elem_next(local_elem))
+          {
+              /* must be only one level deep, ie plain kev = value */
+              const kvtree* elem_hash = kvtree_elem_hash(local_elem);
+              assert(kvtree_size(elem_hash) == 1);
+
+              const kvtree* kvtree_first_elem_hash =
+                kvtree_elem_hash(kvtree_elem_first(elem_hash));
+              assert(kvtree_size(kvtree_first_elem_hash) == 0);
+
+              /* check against known options */
+              const char** opt;
+              int found = 0;
+              for (opt = known_options; *opt != NULL; opt++) {
+                  if (strcmp(*opt, kvtree_elem_key(local_elem)) == 0) {
+                      found = 1;
+                      break;
+                  }
+              }
+              if (! found) {
+                  AXL_ERR("Unknown configuration parameter '%s' with value '%s'",
+                    kvtree_elem_key(local_elem),
+                    kvtree_elem_key(kvtree_elem_first(kvtree_elem_hash(local_elem)))
+                  );
+                  retval = NULL;
+                  break;
+              }
+          }
       }
-    }
-  } else if (id == -1) {
-    /* read out all options we know about */
-    /* TODO: this could be turned into a list of structs */
-    unsigned long ul;
-    if (kvtree_util_get_bytecount(config,
-      AXL_KEY_CONFIG_FILE_BUF_SIZE, &ul) == KVTREE_SUCCESS)
-    {
-      axl_file_buf_size = (size_t) ul;
-      if (axl_file_buf_size != ul) {
-        char* value;
-        kvtree_util_get_str(config, AXL_KEY_CONFIG_FILE_BUF_SIZE, &value);
-        AXL_ERR("Value '%s' passed for %s exceeds int range",
-          value, AXL_KEY_CONFIG_FILE_BUF_SIZE
-        );
-        retval = NULL;
-      }
-    }
-
-    kvtree_util_get_int(config, AXL_KEY_CONFIG_DEBUG, &axl_debug);
-
-    kvtree_util_get_int(config, AXL_KEY_CONFIG_MKDIR, &axl_make_directories);
-
-    kvtree_util_get_int(config,
-      AXL_KEY_CONFIG_COPY_METADATA, &axl_copy_metadata);
   }
 
   /* report all unknown options (typos?) */
@@ -380,83 +433,91 @@ static kvtree* AXL_Config_Set(const int id, const kvtree* config)
        elem != NULL;
        elem = kvtree_elem_next(elem))
   {
-    /* must be only one level deep, ie plain kev = value */
-    const kvtree* elem_hash = kvtree_elem_hash(elem);
-    assert(kvtree_size(elem_hash) == 1);
+      /* must be only one level deep, ie plain kev = value */
+      const kvtree* elem_hash = kvtree_elem_hash(elem);
+      assert(kvtree_size(elem_hash) == 1);
 
-    const kvtree* kvtree_first_elem_hash =
-      kvtree_elem_hash(kvtree_elem_first(elem_hash));
-    assert(kvtree_size(kvtree_first_elem_hash) == 0);
+      const kvtree* kvtree_first_elem_hash =
+        kvtree_elem_hash(kvtree_elem_first(elem_hash));
+      assert(kvtree_size(kvtree_first_elem_hash) == 0);
 
-    /* check against known options */
-    const char** opt;
-    int found = 0;
-    for (opt = known_options; *opt != NULL; opt++) {
-      if (strcmp(*opt, kvtree_elem_key(elem)) == 0) {
-        found = 1;
-        break;
+      /* check against known options */
+      const char** opt;
+      int found = strcmp("id", kvtree_elem_key(elem)) == 0;
+      for (opt = known_options; *opt != NULL && ! found; opt++) {
+          if (strcmp(*opt, kvtree_elem_key(elem)) == 0) {
+              found = 1;
+              break;
+          }
       }
-    }
-    if (! found) {
-      AXL_ERR("Unknown configuration parameter '%s' with value '%s'",
-        kvtree_elem_key(elem),
-        kvtree_elem_key(kvtree_elem_first(kvtree_elem_hash(elem)))
-      );
-      retval = NULL;
-    }
+      if (! found) {
+          AXL_ERR("Unknown configuration parameter '%s' with value '%s'",
+            kvtree_elem_key(elem),
+            kvtree_elem_key(kvtree_elem_first(kvtree_elem_hash(elem)))
+          );
+          retval = NULL;
+      }
   }
 
   return retval;
 }
 
 /** Actual function to get config parameters */
-static kvtree* AXL_Config_Get(const int id)
+static kvtree* AXL_Config_Get()
 {
-    kvtree* config = NULL;
+    kvtree* config = kvtree_new();
+    assert(config != NULL);
+    int success = 1; /* all values could be set? */
 
-    if (id >= 0 && id < axl_kvtrees_count) {
-        /* this should be protected by a mutex_lock to prevent issues with
-         * realloc() moving memory when growing axl_kvtrees, but no one else
-         * does ... */
+    /* global options */
+    success &= kvtree_util_set_bytecount(config,
+                                         AXL_KEY_CONFIG_FILE_BUF_SIZE,
+                                         (unsigned long)axl_file_buf_size)
+                 == KVTREE_SUCCESS;
+    success &= kvtree_util_set_int(config, AXL_KEY_CONFIG_DEBUG, axl_debug)
+                 == KVTREE_SUCCESS;
+    success &= kvtree_util_set_int(config, AXL_KEY_CONFIG_MKDIR,
+                                   axl_make_directories) == KVTREE_SUCCESS;
+    success &= kvtree_util_set_int(config, AXL_KEY_CONFIG_COPY_METADATA,
+                                   axl_copy_metadata) == KVTREE_SUCCESS;
+
+    /* per transfer options */
+    /* this should be protected by a mutex_lock to prevent issues with
+     * realloc() moving memory when growing axl_kvtrees, but no one else
+     * does ... */
+    int id;
+    for (id = 0; id < axl_kvtrees_count; id++) {
         kvtree* file_list = axl_kvtrees[id];
+        /* TODO: check if it would be better to return an empty hash instead */
+        if (file_list == NULL)
+            continue;
 
         /* TODO: this returns the full kvtree. Maybe instead have a sub-tree
          * CONFIG or at least extract only the known configuration options? */
-        config = kvtree_new();
-        if (kvtree_merge(config, file_list) != KVTREE_SUCCESS) {
-            kvtree_delete(&config);
+        kvtree* new = kvtree_set_kv_int(config, "id", id);
+        if (new == NULL) {
+            success = 0;
+            break;
         }
-    } else if (id == -1) {
-        config = kvtree_new();
-
-        int success = 1; /* all values could be set? */
-
-        success &= kvtree_util_set_bytecount(config,
-                                             AXL_KEY_CONFIG_FILE_BUF_SIZE,
-                                             (unsigned long)axl_file_buf_size)
-                     == KVTREE_SUCCESS;
-        success &= kvtree_util_set_int(config, AXL_KEY_CONFIG_DEBUG, axl_debug)
-                     == KVTREE_SUCCESS;
-        success &= kvtree_util_set_int(config, AXL_KEY_CONFIG_MKDIR,
-                                       axl_make_directories) == KVTREE_SUCCESS;
-        success &= kvtree_util_set_int(config, AXL_KEY_CONFIG_COPY_METADATA,
-                                       axl_copy_metadata) == KVTREE_SUCCESS;
-
-        if (!success) {
-            kvtree_delete(&config);
+        if (kvtree_merge(new, file_list) != KVTREE_SUCCESS) {
+            success = 0;
+            break;
         }
+    }
+    if (!success) {
+        kvtree_delete(&config);
     }
 
     return config;
 }
 
 /** Set a AXL config parameters */
-kvtree* AXL_Config(const int id, const kvtree* config)
+kvtree* AXL_Config(const kvtree* config)
 {
     if (config != NULL) {
-        return AXL_Config_Set(id, config);
+        return AXL_Config_Set(config);
     } else {
-        return AXL_Config_Get(id);
+        return AXL_Config_Get();
     }
 }
 

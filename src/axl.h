@@ -102,7 +102,6 @@ int __AXL_Create (axl_xfer_t xtype, const char* name, const char* state_file);
  */
 typedef struct kvtree_struct kvtree;
 kvtree* AXL_Config(
-  const int id,               /** [IN] - transfer to act on, -1 for defaults */
   const kvtree* config        /** [IN] - kvtree of options */
 );
 
