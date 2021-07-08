@@ -14,13 +14,19 @@
 #define AXL_SUCCESS (0)
 #define AXL_FAILURE (-1)
 
+/* unless otherwise indicated all global variables defined in this file must
+ * only be accessed by the main thread */
+
 /*
  * A list of pointers to kvtrees, indexed by AXL ID.
  */
 extern kvtree** axl_kvtrees;
 
 /* current debug level for AXL library,
- * set in AXL_Init used in axl_dbg */
+ * set in AXL_Init and AXL_Config used in axl_dbg.
+ * There can be a race condition between the main thread setting this in
+ * AXL_Config and worker threads using it. Users are advised to be careful
+ * using debug options. */
 extern int axl_debug;
 
 /* flag to track whether file metadata should also be copied,
@@ -116,7 +122,6 @@ int axl_file_copy(
     const char* src_file,
     const char* dst_file,
     unsigned long buf_size,
-    int copy_metadata,
     int resume
 );
 
@@ -171,5 +176,8 @@ int axl_meta_encode(const char* file, kvtree* meta);
 
 /* copy metadata settings recorded in provided kvtree to specified file */
 int axl_meta_apply(const char* file, const kvtree* meta);
+
+/* Check if a file is the size we expect it to be */
+int axl_check_file_size(const char* file, const kvtree* meta);
 
 #endif /* AXL_INTERNAL_H */

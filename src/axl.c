@@ -3,7 +3,6 @@
 #include <string.h>
 #include <errno.h>
 #include <stdio.h>
-#include <pthread.h>
 
 /* PATH_MAX */
 #include <limits.h>
@@ -73,7 +72,9 @@ int axl_copy_metadata;
 kvtree** axl_kvtrees;
 static unsigned int axl_kvtrees_count = 0;
 
-static pthread_mutex_t id_lock = PTHREAD_MUTEX_INITIALIZER;
+#ifdef HAVE_BBAPI
+static int bbapi_is_loaded = 0;
+#endif
 
 /*
  * Allocate a new kvtree and return the AXL ID for it.  If state_file is
@@ -96,15 +97,11 @@ static int axl_alloc_id(const char* state_file)
         kvtree_util_set_str(new, AXL_KEY_STATE_FILE, state_file);
     }
 
-    pthread_mutex_lock(&id_lock);
-
     int id = axl_kvtrees_count;
     axl_kvtrees_count++;
 
     axl_kvtrees = realloc(axl_kvtrees, sizeof(struct kvtree*) * axl_kvtrees_count);
     axl_kvtrees[id] = new;
-
-    pthread_mutex_unlock(&id_lock);
 
     return id;
 }
@@ -126,12 +123,8 @@ static void axl_free_id(int id)
 {
     axl_remove_state_file(id);
 
-    pthread_mutex_lock(&id_lock);
-
     /* kvtree_delete() will set axl_kvtrees[id] = NULL */
     kvtree_delete(&axl_kvtrees[id]);
-
-    pthread_mutex_unlock(&id_lock);
 }
 
 /*
@@ -239,9 +232,8 @@ API Functions
 ========================================
 */
 
-/* Read configuration from non-AXL-specific file
-  Also, start up vendor specific services */
-int __AXL_Init (const char* state_file)
+/* Initialize library and start up vendor specific services */
+int AXL_Init (void)
 {
     int rc = AXL_SUCCESS;
 
@@ -270,17 +262,6 @@ int __AXL_Init (const char* state_file)
         axl_make_directories = atoi(val);
     }
 
-    if (state_file != NULL) {
-        printf("WARNING: Passing a state_file to AXL_Init() is deprecated." \
-               "Pass it to AXL_Create(id, type, state_file) instead.\n");
-    }
-
-#ifdef HAVE_BBAPI
-    if (axl_async_init_bbapi() != AXL_SUCCESS) {
-        rc = AXL_FAILURE;
-    }
-#endif
-
 #ifdef HAVE_LIBCPPR
     if (axl_async_init_cppr() != AXL_SUCCESS) {
         rc = AXL_FAILURE;
@@ -296,9 +277,11 @@ int AXL_Finalize (void)
     int rc = AXL_SUCCESS;
 
 #ifdef HAVE_BBAPI
-    if (axl_async_finalize_bbapi() != AXL_SUCCESS) {
-        rc = AXL_FAILURE;
-    }
+    if (bbapi_is_loaded) {
+       if (axl_async_finalize_bbapi() != AXL_SUCCESS) {
+          rc = AXL_FAILURE;
+       }
+   }
 #endif
 
 #ifdef HAVE_LIBCPPR
@@ -364,9 +347,6 @@ static kvtree* AXL_Config_Set(const kvtree* config)
                 break;
             }
 
-            /* this should be protected by a mutex_lock to prevent issues with
-             * realloc() moving memory when growing axl_kvtrees, but no one else
-             * does ... */
             kvtree* file_list = axl_kvtrees[id];
 
             const char** opt;
@@ -487,9 +467,6 @@ static kvtree* AXL_Config_Get()
                                    axl_copy_metadata) == KVTREE_SUCCESS;
 
     /* per transfer options */
-    /* this should be protected by a mutex_lock to prevent issues with
-     * realloc() moving memory when growing axl_kvtrees, but no one else
-     * does ... */
     int id;
     for (id = 0; id < axl_kvtrees_count; id++) {
         kvtree* file_list = axl_kvtrees[id];
@@ -544,7 +521,7 @@ kvtree* AXL_Config(const kvtree* config)
  * Type specifies a particular method to use
  * Name is a user/application provided string
  * Returns an ID to the transfer handle */
-int __AXL_Create(axl_xfer_t xtype, const char* name, const char* state_file)
+int AXL_Create(axl_xfer_t xtype, const char* name, const char* state_file)
 {
     /* Generate next unique ID */
     int id = axl_alloc_id(state_file);
@@ -636,9 +613,27 @@ int __AXL_Create(axl_xfer_t xtype, const char* name, const char* state_file)
     case AXL_XFER_PTHREAD:
         break;
     case AXL_XFER_ASYNC_BBAPI:
+#ifdef HAVE_BBAPI
+        /*
+         * Load the BB library on the very first call to
+         * AXL_Create(AXL_XFER_BBAPI, ...).  We have to do it here instead
+         * of in AXL_Init(), since this is the first point that we know
+         * we're doing an actual BB API transfer.
+         */
+        if (!bbapi_is_loaded) {
+           rc = axl_async_init_bbapi();
+           if (rc != AXL_SUCCESS) {
+              break;
+           }
+           bbapi_is_loaded = 1;
+        }
         if (! reload_from_state_file) {
             rc = axl_async_create_bbapi(id);
         }
+#else
+        /* User is requesting a BB transfer, but we didn't build with BBAPI */
+        rc = AXL_FAILURE;
+#endif
         break;
     default:
         AXL_ERR("Unknown transfer type (%d)", (int) xtype);
@@ -901,6 +896,82 @@ int AXL_Add (int id, const char* src, const char* dest)
 }
 
 /*
+ * Save metadata (size & mode bits) about each file to the file_list kvtree.
+ *
+ * TODO: Make this multithreaded.
+ */
+static int axl_save_metadata(int id)
+{
+    char* src;
+    kvtree_elem *elem = NULL;
+    kvtree *src_kvtree;
+    int rc;
+
+    /* For each source file ... */
+    while ((elem = axl_get_next_path(id, elem, &src, NULL))) {
+        /* Get the kvtree for the file */
+        src_kvtree = kvtree_elem_hash(elem);
+
+        /* stat() the file and record metadata to the file's kvtree */
+        rc = axl_meta_encode(src, src_kvtree);
+        if (rc != AXL_SUCCESS) {
+            return rc;
+        }
+    }
+    return AXL_SUCCESS;
+}
+
+/*
+ * Given an AXL id, check that all the file sizes are correct after a
+ * transfer.
+ *
+ * TODO: Make this multithreaded
+ */
+static int axl_check_file_sizes(int id)
+{
+    kvtree_elem *elem = NULL;
+    kvtree *src_kvtree;
+    char *dst;
+    int rc;
+
+    /* For each source file ... */
+    while ((elem = axl_get_next_path(id, elem, NULL, &dst))) {
+        /* Get the kvtree for the file */
+        src_kvtree = kvtree_elem_hash(elem);
+
+        rc = axl_check_file_size(dst, src_kvtree);
+        if (rc != AXL_SUCCESS) {
+            return rc;
+        }
+    }
+    return AXL_SUCCESS;
+}
+
+/*
+ * Set metadata mode bits
+ *
+ * TODO: Make this multithreaded.
+ */
+static int axl_set_metadata(int id)
+{
+    char* src, *dst;
+    kvtree_elem *elem = NULL;
+    kvtree *src_kvtree;
+    int rc;
+
+    /* For each destination file ... */
+    while ((elem = axl_get_next_path(id, elem, &src, &dst))) {
+        src_kvtree = kvtree_elem_hash(elem);
+
+        rc = axl_meta_apply(dst, src_kvtree);
+        if (rc != AXL_SUCCESS) {
+            return rc;
+        }
+    }
+    return AXL_SUCCESS;
+}
+
+/*
  * Initiate a transfer for all files in handle ID.  If resume is set to 1, then
  * attempt to resume the transfers from the existing destination files.
  *
@@ -992,6 +1063,14 @@ int __AXL_Dispatch (int id, int resume)
                 }
             }
         }
+    }
+
+    if (!resume) {
+        if (axl_save_metadata(id) != 0) {
+            AXL_ERR("Couldn't save metadata");
+            return AXL_FAILURE;
+        }
+        axl_write_state_file(id);
     }
 
     /* NOTE FOR XFER INTERFACES
@@ -1251,6 +1330,14 @@ int AXL_Wait (int id)
     }
 
 end:
+    /* Are all our destination files the correct size? */
+    rc = axl_check_file_sizes(id);
+
+    if (rc == AXL_SUCCESS && axl_copy_metadata) {
+        /* Set permissions and creation times on files */
+        rc = axl_set_metadata(id);
+    }
+
     /* if we're successful, rename temporary files to final destination names */
     if (rc == AXL_SUCCESS) {
         rc = axl_rename_files_to_final_names(id);
